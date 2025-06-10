@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Welcome to User Dashboard</h2>
+<ul class="nav nav-tabs mb-4">
+    <li class="nav-item">
+        <a class="nav-link {% if not request.args.get('tab') or request.args.get('tab') == 'lots' %}active{% endif %}" href="{{ url_for('user_dashboard') }}">Parking Lots</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if request.args.get('tab') == 'history' %}active{% endif %}" href="{{ url_for('user_dashboard') }}?tab=history">Recent Parking History</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if request.args.get('tab') == 'summary' %}active{% endif %}" href="{{ url_for('user_dashboard') }}?tab=summary">Summary Charts</a>
+    </li>
+</ul>
+
+{% if not request.args.get('tab') or request.args.get('tab') == 'lots' %}
+    {% if reservation %}
+    <h3>Your Current Reservation</h3>
+    <div class="card mb-4">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0">Spot: {{ reserved_spot.id }}</h5>
+        </div>
+        <div class="card-body">
+            <p><strong>Parking Lot:</strong> {{ reserved_lot.prime_location_name }}</p>
+            <p><strong>Lot ID:</strong> {{ reserved_spot.lot_id }}</p>
+            <p><strong>Vehicle Number:</strong> {{ reservation.vehicle_number }}</p>
+            <p><strong>Parking Time:</strong> {{ reservation.parking_timestamp }}</p>
+            <form method="POST" action="{{ url_for('release_spot', reservation_id=reservation.id) }}" style="display:inline;">
+                <button type="submit" class="btn btn-danger">Release</button>
+            </form>
+            <a href="{{ url_for('user_dashboard') }}" class="btn btn-primary">Cancel</a>
+        </div>
+    </div>
+    {% endif %}
+
+    <h3>Reserve a Parking Spot</h3>
+    <form method="POST" action="{{ url_for('reserve_spot') }}">
+        <div class="mb-3">
+            <label for="lot_id" class="form-label">Select Parking Lot</label>
+            <select class="form-control" id="lot_id" name="lot_id" required>
+                <option value="">-- Select a Parking Lot --</option>
+                {% for lot in lots %}
+                    <option value="{{ lot.id }}">{{ lot.prime_location_name }} (Price: ${{ lot.price }}/hr)</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="vehicle_number" class="form-label">Vehicle Number</label>
+            <input type="text" class="form-control" id="vehicle_number" name="vehicle_number" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Reserve</button>
+        <a href="{{ url_for('user_dashboard') }}" class="btn btn-secondary">Cancel</a>
+    </form>
+
+    <h3 class="mt-5">Available Parking Lots</h3>
+    <form class="mb-4" method="GET" action="{{ url_for('user_search_lots') }}">
+        <div class="input-group">
+            <input type="text" class="form-control" name="query" placeholder="Search by parking lot or vehicle/location">
+            <button type="submit" class="btn btn-primary">Search</button>
+        </div>
+    </form>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Location Name</th>
+                <th>Price per Hour</th>
+                <th>Address</th>
+                <th>Pin Code</th>
+                <th>Max Spots</th>
+                <th>Availability</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for lot in lots %}
+            <tr>
+                <td>{{ lot.id }}</td>
+                <td>{{ lot.prime_location_name }}</td>
+                <td>{{ lot.price }}</td>
+                <td>{{ lot.address }}</td>
+                <td>{{ lot.pin_code }}</td>
+                <td>{{ lot.maximum_number_of_spots }}</td>
+                <td>
+                    {% set available = spots|selectattr('lot_id', 'equalto', lot.id)|list|length %}
+                    {{ available }}/{{ lot.maximum_number_of_spots }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h3>Available Parking Spots</h3>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Lot ID</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for spot in spots %}
+            <tr>
+                <td>{{ spot.id }}</td>
+                <td>{{ spot.lot_id }}</td>
+                <td>{{ spot.status }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% elif request.args.get('tab') == 'history' %}
+    <h3>Recent Parking History</h3>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Spot ID</th>
+                <th>Lot ID</th>
+                <th>Parking Time</th>
+                <th>Leaving Time</th>
+                <th>Cost</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in history %}
+            <tr>
+                <td>{{ item.reservation.id }}</td>
+                <td>{{ item.reservation.spot_id }}</td>
+                <td>{{ item.lot_id }}</td>
+                <td>{{ item.reservation.parking_timestamp }}</td>
+                <td>{{ item.reservation.leaving_timestamp or 'Active' }}</td>
+                <td>
+                    {% if item.reservation.parking_cost is not none %}
+                        ${{ item.reservation.parking_cost|float|round(2) }}
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% elif request.args.get('tab') == 'summary' %}
+    <h3>Summary on Parking Spots</h3>
+    {% if total_reservations == 0 %}
+        <div class="alert alert-info" role="alert">
+            You have no parking reservations to display in the summary charts.
+        </div>
+    {% else %}
+        <div class="row">
+            <div class="col-md-6">
+                <canvas id="reservationsChart"></canvas>
+            </div>
+            <div class="col-md-6">
+                <canvas id="activeChart"></canvas>
+            </div>
+        </div>
+        <script>
+            if (typeof Chart === 'undefined') {
+                document.getElementById('reservationsChart').style.display = 'none';
+                document.getElementById('activeChart').style.display = 'none';
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'alert alert-danger';
+                errorDiv.role = 'alert';
+                errorDiv.innerText = 'Failed to load Chart.js. Please check your internet connection or try again later.';
+                document.querySelector('.row').after(errorDiv);
+            } else {
+                // Reservations Chart (Pie)
+                const resCtx = document.getElementById('reservationsChart').getContext('2d');
+                new Chart(resCtx, {
+                    type: 'pie',
+                    data: {
+                        labels: ['Total Reservations'],
+                        datasets: [{
+                            data: [{{ total_reservations }}],
+                            backgroundColor: ['#36A2EB']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: {
+                                position: 'top'
+                            },
+                            title: {
+                                display: true,
+                                text: 'Total Reservations'
+                            }
+                        }
+                    }
+                });
+
+                // Active Reservations Chart (Bar)
+                const activeCtx = document.getElementById('activeChart').getContext('2d');
+                new Chart(activeCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Active Reservations'],
+                        datasets: [{
+                            label: 'Reservations',
+                            data: [{{ active_reservations }}],
+                            backgroundColor: ['#FF6384']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            title: {
+                                display: true,
+                                text: 'Active Reservations'
+                            }
+                        }
+                    }
+                });
+            }
+        </script>
+    {% endif %}
+{% endif %}
+{% endblock %}

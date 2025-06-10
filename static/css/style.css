@@ -1,0 +1,20 @@
+body {
+    background-color: #f8f9fa;
+}
+
+.card-header {
+    font-weight: bold;
+}
+
+.btn-link {
+    font-size: 0.9em;
+}
+
+.nav-tabs .nav-link.active {
+    background-color: #e9ecef;
+    border-bottom: 2px solid #007bff;
+}
+
+.table th {
+    background-color: #e9ecef;
+}

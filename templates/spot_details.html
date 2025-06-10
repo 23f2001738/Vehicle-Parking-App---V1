@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Spot Reservation Details</h2>
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">Spot ID: {{ spot.id }}</h5>
+    </div>
+    <div class="card-body">
+        <p><strong>Lot ID:</strong> {{ spot.lot_id }}</p>
+        <p><strong>Status:</strong> {{ spot.status }}</p>
+        <p><strong>User ID:</strong> {{ reservation.user_id }}</p>
+        <p><strong>Vehicle Number:</strong> {{ reservation.vehicle_number }}</p>
+        <p><strong>Parking Time:</strong> {{ reservation.parking_timestamp }}</p>
+        <p><strong>Leaving Time:</strong> {{ reservation.leaving_timestamp or 'Still Parked' }}</p>
+        <p><strong>Cost:</strong> 
+            {% if reservation.parking_cost is not none %}
+                ${{ reservation.parking_cost|float|round(2) }}
+            {% else %}
+                N/A
+            {% endif %}
+        </p>
+        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Back</a>
+    </div>
+</div>
+{% endblock %}

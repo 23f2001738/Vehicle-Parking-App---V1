@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Parking Spot Details</h2>
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">Spot ID: {{ spot.id }}</h5>
+    </div>
+    <div class="card-body">
+        <p><strong>Lot ID:</strong> {{ spot.lot_id }}</p>
+        <p><strong>Status:</strong> {{ spot.status }}</p>
+        {% if spot.status == 'O' %}
+            <a href="{{ url_for('spot_details', spot_id=spot.id) }}" class="btn btn-primary">View Reservation Details</a>
+        {% endif %}
+        <form method="POST" action="{{ url_for('delete_spot', spot_id=spot.id) }}" style="display:inline;">
+            <button type="submit" class="btn btn-danger" onclick="return confirm('Are you sure?')">Delete Spot</button>
+        </form>
+        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Back</a>
+    </div>
+</div>
+{% endblock %}
