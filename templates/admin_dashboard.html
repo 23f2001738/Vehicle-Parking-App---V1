@@ -1,28 +1,40 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h2>Welcome to Admin Dashboard</h2>
-<ul class="nav nav-tabs mb-4">
-    <li class="nav-item">
-        <a class="nav-link {% if not request.args.get('tab') or request.args.get('tab') == 'lots' %}active{% endif %}" href="{{ url_for('admin_dashboard') }}">Parking Lots</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link {% if request.args.get('tab') == 'add' %}active{% endif %}" href="{{ url_for('admin_dashboard') }}?tab=add">Add Lot</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link {% if request.args.get('tab') == 'summary' %}active{% endif %}" href="{{ url_for('admin_dashboard') }}?tab=summary">Summary Charts</a>
-    </li>
-</ul>
+<style>
+    .occupied { color: #dc3545; font-weight: bold; }
+    .available { color: #28a745; font-weight: bold; }
+    .edit-btn { background-color: #ffc107; border-color: #ffc107; }
+    .delete-btn { background-color: #dc3545; border-color: #dc3545; color: white; }
+    .table th { background-color: #f8f9fa; }
+</style>
+
+Welcome to Admin Dashboard
+
+    <ul class="nav nav-tabs">
+        <li class="nav-item">
+            <a class="nav-link {% if not request.args.get('tab') or request.args.get('tab') == 'lots' %}active{% endif %}" href="{{ url_for('admin_dashboard', tab='lots') }}">Parking Lots</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if request.args.get('tab') == 'add' %}active{% endif %}" href="{{ url_for('admin_dashboard', tab='add') }}">Add Lot</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if request.args.get('tab') == 'summary' %}active{% endif %}" href="{{ url_for('admin_dashboard', tab='summary') }}">Summary Charts</a>
+        </li>
+    </ul>
 
 {% if not request.args.get('tab') or request.args.get('tab') == 'lots' %}
-    <h3>Parking Lots</h3>
-    <form class="mb-4" method="GET" action="{{ url_for('search_lots') }}">
+    <h2>Parking Lots</h2>
+    <p>Search by parking lot or vehicle/location</p>
+
+    <form class="mb-3">
         <div class="input-group">
-            <input type="text" class="form-control" name="query" placeholder="Search by parking lot or vehicle/location">
-            <button type="submit" class="btn btn-primary">Search</button>
+            <input type="text" class="form-control" name="query" placeholder="Search" value="{{ request.args.get('query', '') }}">
+            <button class="btn btn-primary" type="submit" formaction="{{ url_for('search_lots') }}">Search</button>
         </div>
     </form>
-    <table class="table">
+
+    <table class="table table-striped">
         <thead>
             <tr>
                 <th>ID</th>
@@ -36,74 +48,68 @@
         </thead>
         <tbody>
             {% for lot in lots %}
-            <tr>
-                <td>{{ lot.id }}</td>
-                <td>{{ lot.prime_location_name }}</td>
-                <td>{{ lot.price }}</td>
-                <td>{{ lot.address }}</td>
-                <td>{{ lot.pin_code }}</td>
-                <td>{{ lot.maximum_number_of_spots }}</td>
-                <td>
-                    <a href="{{ url_for('edit_lot', lot_id=lot.id) }}" class="btn btn-sm btn-warning">Edit</a>
-                    <form method="POST" action="{{ url_for('delete_lot', lot_id=lot.id) }}" style="display:inline;">
-                        <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure?')">Delete</button>
-                    </form>
-                </td>
-            </tr>
+                <tr>
+                    <td>{{ lot.id }}</td>
+                    <td>{{ lot.prime_location_name }}</td>
+                    <td>{{ lot.price }}</td>
+                    <td>{{ lot.address }}</td>
+                    <td>{{ lot.pin_code }}</td>
+                    <td>{{ lot.maximum_number_of_spots }}</td>
+                    <td>
+                        <a href="{{ url_for('edit_lot', lot_id=lot.id) }}" class="btn btn-sm edit-btn">Edit</a>
+                        <form action="{{ url_for('delete_lot', lot_id=lot.id) }}" method="POST" style="display:inline;">
+                            <button type="submit" class="btn btn-sm delete-btn" onclick="return confirm('Are you sure you want to delete this lot?')">Delete</button>
+                        </form>
+                    </td>
+                </tr>
             {% endfor %}
         </tbody>
     </table>
 
-    <h3 class="mt-5">Parking Spots</h3>
-    <style>
-        .parking-table {
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        .parking-table th, .parking-table td {
-            padding: 8px;
-            vertical-align: middle;
-        }
-        .parking-table .text-center {
-            text-align: center;
-        }
-    </style>
-    <table class="table table-striped table-bordered table-hover parking-table">
-        <thead class="table-primary">
+    <h2>Parking Spots</h2>
+
+    <table class="table table-striped">
+        <thead>
             <tr>
-                <th>Spot Number</th>
+                <th>Spot ID</th>
                 <th>Parking Lot Name</th>
-                <th class="text-center">Status</th>
+                <th>Status</th>
                 <th>User</th>
                 <th>Vehicle Number</th>
                 <th>Parking Since</th>
-                <th class="text-center">Action</th>
+                <th>Action</th>
             </tr>
         </thead>
         <tbody>
-            {% for item in spots_with_details %}
-            <tr>
-                <td>{{ item.spot.id }}</td>
-                <td>{{ item.lot.prime_location_name if item.lot else 'Unknown Lot' }}</td>
-                <td class="text-center">
-                    {% if item.spot.status == 'O' %}
-                        <span class="badge bg-danger">Occupied</span>
-                    {% else %}
-                        <span class="badge bg-success">Available</span>
-                    {% endif %}
-                </td>
-                <td>{{ item.user.username if item.user else '-' }}</td>
-                <td>{{ item.reservation.vehicle_number if item.reservation else '-' }}</td>
-                <td>{{ item.reservation.parking_timestamp.strftime('%Y-%m-%d %H:%M:%S') if item.reservation else '-' }}</td>
-                <td class="text-center">
-                    <a href="{{ url_for('view_spot', spot_id=item.spot.id) }}" class="btn btn-sm btn-info">Details</a>
-                </td>
-            </tr>
+            {% set grouped_spots = spots_with_details|groupby('spot.lot_id') %}
+            {% for lot_id, lot_spots in grouped_spots %}
+                {% for item in lot_spots|sort(attribute='spot.id') %}
+                    {% set position = loop.index %}
+                    {% set letter = (position + 64)|chr %}
+                    <tr>
+                        <td>{{ letter }}-{{ item.spot.lot_id }}</td>
+                        <td>{{ item.lot.prime_location_name if item.lot else 'Unknown Lot' }}</td>
+                        <td>
+                            {% if item.spot.status == 'O' %}
+                                <span class="occupied">Occupied</span>
+                            {% else %}
+                                <span class="available">Available</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ item.user.username if item.user else '-' }}</td>
+                        <td>{{ item.reservation.vehicle_number if item.reservation else '-' }}</td>
+                        <td>{{ item.reservation.parking_timestamp.strftime('%Y-%m-%d %H:%M:%S') if item.reservation else '-' }}</td>
+                        <td>
+                            <a href="{{ url_for('view_spot', spot_id=item.spot.id) }}" class="btn btn-sm btn-info">Details</a>
+                        </td>
+                    </tr>
+                {% endfor %}
             {% endfor %}
         </tbody>
     </table>
 {% elif request.args.get('tab') == 'add' %}
-    <h3>Add Parking Lot</h3>
+    <h2>Add Parking Lot</h2>
+
     <form method="POST" action="{{ url_for('create_lot') }}">
         <div class="mb-3">
             <label for="name" class="form-label">Prime Location Name</label>
@@ -129,114 +135,93 @@
         <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Cancel</a>
     </form>
 {% elif request.args.get('tab') == 'summary' %}
-    <h3>Summary Charts</h3>
+    <h2>Summary Charts</h2>
+
     {% if total_lots == 0 and total_spots == 0 %}
-        <div class="alert alert-info" role="alert">
+        <div class="alert alert-info">
             No parking lots or spots available to display summary charts. Please add a parking lot in the "Add Lot" tab.
         </div>
     {% else %}
-        <div class="row mb-4">
+        <div class="row">
             <div class="col-md-4">
-                <div class="card shadow-sm">
-                    <div class="card-body text-center">
+                <div class="card">
+                    <div class="card-body">
                         <h5 class="card-title">Total Reservations</h5>
                         <p class="card-text display-4">{{ total_reservations }}</p>
                     </div>
                 </div>
             </div>
             <div class="col-md-4">
-                <div class="card shadow-sm">
+                <div class="card">
                     <div class="card-body">
-                        <canvas id="lotsChart"></canvas>
+                        <h5 class="card-title">Total Spots</h5>
+                        <canvas id="totalSpotsChart"></canvas>
                     </div>
                 </div>
             </div>
             <div class="col-md-4">
-                <div class="card shadow-sm">
+                <div class="card">
                     <div class="card-body">
-                        <canvas id="spotsChart"></canvas>
+                        <h5 class="card-title">Parking Lot Revenue</h5>
+                        <canvas id="revenueChart"></canvas>
                     </div>
                 </div>
             </div>
         </div>
-        <script>
-            if (typeof Chart === 'undefined') {
-                document.getElementById('lotsChart').style.display = 'none';
-                document.getElementById('spotsChart').style.display = 'none';
-                const errorDiv = document.createElement('div');
-                errorDiv.className = 'alert alert-danger';
-                errorDiv.role = 'alert';
-                errorDiv.innerText = 'Failed to load Chart.js. Please check your internet connection or try again later.';
-                document.querySelector('.row').after(errorDiv);
-            } else {
-                const lotsCtx = document.getElementById('lotsChart').getContext('2d');
-                new Chart(lotsCtx, {
-                    type: 'doughnut',
-                    data: {
-                        labels: ['Total Lots'],
-                        datasets: [{
-                            data: [{{ total_lots }}],
-                            backgroundColor: ['#36A2EB'],
-                            borderColor: ['#ffffff'],
-                            borderWidth: 2
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        plugins: {
-                            legend: {
-                                position: 'top'
-                            },
-                            title: {
-                                display: true,
-                                text: 'Total Parking Lots'
-                            }
-                        }
-                    }
-                });
 
-                const spotsCtx = document.getElementById('spotsChart').getContext('2d');
-                new Chart(spotsCtx, {
-                    type: 'bar',
-                    data: {
-                        labels: ['Occupied', 'Available'],
-                        datasets: [{
-                            label: 'Spots',
-                            data: [{{ occupied_spots }}, {{ available_spots }}],
-                            backgroundColor: ['#FF6384', '#36A2EB'],
-                            borderColor: ['#ffffff'],
-                            borderWidth: 1
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                title: {
-                                    display: true,
-                                    text: 'Number of Spots'
-                                }
-                            },
-                            x: {
-                                title: {
-                                    display: true,
-                                    text: 'Status'
-                                }
-                            }
-                        },
-                        plugins: {
-                            legend: {
-                                display: false
-                            },
-                            title: {
-                                display: true,
-                                text: 'Parking Spots Status'
-                            }
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script>
+            // Total Spots Chart
+            const totalSpotsCtx = document.getElementById('totalSpotsChart').getContext('2d');
+            new Chart(totalSpotsCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Occupied', 'Available'],
+                    datasets: [{
+                        data: [{{ occupied_spots }}, {{ available_spots }}],
+                        backgroundColor: ['#dc3545', '#28a745']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
                         }
                     }
-                });
-            }
+                }
+            });
+
+            // Parking Lot Revenue Chart
+            const revenueCtx = document.getElementById('revenueChart').getContext('2d');
+            new Chart(revenueCtx, {
+                type: 'bar',
+                data: {
+                    labels: [{% for lot in lots %}'{{ lot.prime_location_name }}'{% if not loop.last %},{% endif %}{% endfor %}],
+                    datasets: [{
+                        label: 'Total Revenue ($)',
+                        data: [{% for lot_name, revenue in lot_revenue.items() %}{{ revenue }}{% if not loop.last %},{% endif %}{% endfor %}],
+                        backgroundColor: '#007bff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Revenue ($)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
         </script>
     {% endif %}
 {% endif %}

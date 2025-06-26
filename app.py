@@ -11,6 +11,11 @@ app.config['SESSION_PERMANENT'] = True
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=1)
 db.init_app(app)
 
+def chr_filter(value):
+    return chr(value)
+
+app.jinja_env.filters['chr'] = chr_filter
+
 with app.app_context():
     db.create_all()
     admin = User.query.filter_by(username='admin').first()
@@ -92,8 +97,10 @@ def admin_dashboard():
         return redirect(url_for('login'))
     lots = ParkingLot.query.all()
     spots = ParkingSpot.query.all()
+    # Get all reservations to calculate total revenue and count active ones
+    all_reservations = Reservation.query.all()
     active_reservations = Reservation.query.filter_by(leaving_timestamp=None).all()
-    reservation_dict = {res.spot_id: res for res in active_reservations}
+    reservation_dict = {res.spot_id: res for res in all_reservations}
     lot_dict = {lot.id: lot for lot in lots}
     users = User.query.all()
     user_dict = {user.id: user for user in users}
@@ -112,8 +119,18 @@ def admin_dashboard():
     occupied_spots = len([spot for spot in spots if spot.status == 'O'])
     available_spots = total_spots - occupied_spots
     total_reservations = len(active_reservations)
+
+    # Calculate total revenue per lot
+    lot_revenue = {}
+    for lot in lots:
+        lot_spots = ParkingSpot.query.filter_by(lot_id=lot.id).all()
+        spot_ids = [spot.id for spot in lot_spots]
+        total_revenue = Reservation.query.filter(Reservation.spot_id.in_(spot_ids), Reservation.parking_cost.isnot(None)).with_entities(db.func.sum(Reservation.parking_cost)).scalar() or 0
+        lot_revenue[lot.prime_location_name] = round(total_revenue, 2)
+
     print(f"Admin Dashboard Data - Total Lots: {total_lots}, Total Spots: {total_spots}, Occupied: {occupied_spots}, Available: {available_spots}, Total Reservations: {total_reservations}")
-    return render_template('admin_dashboard.html', lots=lots, spots_with_details=spots_with_details, total_lots=total_lots, total_spots=total_spots, occupied_spots=occupied_spots, available_spots=available_spots, total_reservations=total_reservations)
+    return render_template('admin_dashboard.html', lots=lots, spots_with_details=spots_with_details, total_lots=total_lots, total_spots=total_spots, occupied_spots=occupied_spots, available_spots=available_spots, total_reservations=total_reservations, lot_revenue=lot_revenue)
+    
 
 @app.route('/admin/create_lot', methods=['POST'])
 def create_lot():
@@ -255,7 +272,17 @@ def user_dashboard():
         flash('User access required.', 'danger')
         return redirect(url_for('login'))
     lots = ParkingLot.query.all()
-    spots = ParkingSpot.query.filter_by(status='A').all()
+    spots = ParkingSpot.query.all()
+    active_reservations = Reservation.query.filter_by(leaving_timestamp=None).all()
+    reservation_dict = {res.spot_id: res for res in active_reservations}
+    lot_dict = {lot.id: lot for lot in lots}
+    spots_with_lots = []
+    for spot in spots:
+        spots_with_lots.append({
+            'spot': spot,
+            'lot': lot_dict.get(spot.lot_id),
+            'reservation': reservation_dict.get(spot.id)
+        })
     history = Reservation.query.filter_by(user_id=user.id).order_by(Reservation.parking_timestamp.desc()).all()
     history_with_spots = []
     for res in history:
@@ -265,14 +292,18 @@ def user_dashboard():
             'lot_id': spot.lot_id if spot else 'N/A'
         })
     total_reservations = len(history)
-    active_reservations = len([res for res in history if res.leaving_timestamp is None])
+    active_reservations_count = len([res for res in history if res.leaving_timestamp is None])
+    total_lots = len(lots)
+    total_spots = len(spots)
+    occupied_spots = len([spot for spot in spots if spot.status == 'O'])
+    available_spots = total_spots - occupied_spots
     reservation = Reservation.query.filter_by(user_id=user.id, leaving_timestamp=None).first()
     reserved_spot = None
     reserved_lot = None
     if reservation:
         reserved_spot = ParkingSpot.query.get(reservation.spot_id)
         reserved_lot = ParkingLot.query.get(reserved_spot.lot_id)
-    return render_template('user_dashboard.html', user=user, lots=lots, spots=spots, reservation=reservation, reserved_spot=reserved_spot, reserved_lot=reserved_lot, history=history_with_spots, total_reservations=total_reservations, active_reservations=active_reservations)
+    return render_template('user_dashboard.html', user=user, lots=lots, spots_with_lots=spots_with_lots, reservation=reservation, reserved_spot=reserved_spot, reserved_lot=reserved_lot, history=history_with_spots, total_reservations=total_reservations, active_reservations_count=active_reservations_count, total_lots=total_lots, total_spots=total_spots, occupied_spots=occupied_spots, available_spots=available_spots)
 
 @app.route('/user/reserve_spot', methods=['POST'])
 def reserve_spot():
@@ -335,7 +366,17 @@ def user_search_lots():
         return redirect(url_for('login'))
     query = request.args.get('query', '')
     lots = ParkingLot.query.filter(ParkingLot.prime_location_name.ilike(f'%{query}%')).all()
-    spots = ParkingSpot.query.filter_by(status='A').join(ParkingLot).filter(ParkingLot.prime_location_name.ilike(f'%{query}%')).all()
+    spots = ParkingSpot.query.join(ParkingLot).filter(ParkingLot.prime_location_name.ilike(f'%{query}%')).all()
+    active_reservations = Reservation.query.filter_by(leaving_timestamp=None).all()
+    reservation_dict = {res.spot_id: res for res in active_reservations}
+    lot_dict = {lot.id: lot for lot in lots}
+    spots_with_lots = []
+    for spot in spots:
+        spots_with_lots.append({
+            'spot': spot,
+            'lot': lot_dict.get(spot.lot_id),
+            'reservation': reservation_dict.get(spot.id)
+        })
     history = Reservation.query.filter_by(user_id=user.id).order_by(Reservation.parking_timestamp.desc()).all()
     history_with_spots = []
     for res in history:
@@ -345,14 +386,14 @@ def user_search_lots():
             'lot_id': spot.lot_id if spot else 'N/A'
         })
     total_reservations = len(history)
-    active_reservations = len([res for res in history if res.leaving_timestamp is None])
+    active_reservations_count = len([res for res in history if res.leaving_timestamp is None])
     reservation = Reservation.query.filter_by(user_id=user.id, leaving_timestamp=None).first()
     reserved_spot = None
     reserved_lot = None
     if reservation:
         reserved_spot = ParkingSpot.query.get(reservation.spot_id)
         reserved_lot = ParkingLot.query.get(reserved_spot.lot_id)
-    return render_template('user_dashboard.html', user=user, lots=lots, spots=spots, reservation=reservation, reserved_spot=reserved_spot, reserved_lot=reserved_lot, history=history_with_spots, total_reservations=total_reservations, active_reservations=active_reservations)
+    return render_template('user_dashboard.html', user=user, lots=lots, spots_with_lots=spots_with_lots, reservation=reservation, reserved_spot=reserved_spot, reserved_lot=reserved_lot, history=history_with_spots, total_reservations=total_reservations, active_reservations=active_reservations_count)
 
 @app.route('/api/spots', methods=['GET'])
 def get_spots():

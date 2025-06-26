@@ -82,7 +82,7 @@
                 <td>{{ lot.pin_code }}</td>
                 <td>{{ lot.maximum_number_of_spots }}</td>
                 <td>
-                    {% set available = spots|selectattr('lot_id', 'equalto', lot.id)|list|length %}
+                    {% set available = spots_with_lots|selectattr('spot.lot_id', 'equalto', lot.id)|selectattr('spot.status', 'equalto', 'A')|list|length %}
                     {{ available }}/{{ lot.maximum_number_of_spots }}
                 </td>
             </tr>
@@ -90,25 +90,96 @@
         </tbody>
     </table>
 
-    <h3>Available Parking Spots</h3>
-    <table class="table">
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Lot ID</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for spot in spots %}
-            <tr>
-                <td>{{ spot.id }}</td>
-                <td>{{ spot.lot_id }}</td>
-                <td>{{ spot.status }}</td>
-            </tr>
+    <h3>Parking Spots</h3>
+    <style>
+        .spot-card {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .spot-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        .spot-card .availability-container {
+            text-align: center;
+            margin-top: 10px;
+        }
+        .spot-card .status-available {
+            color: #28a745; /* Green */
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+        .spot-card .status-occupied {
+            color: #dc3545; /* Red */
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+        .spot-card .vehicle-number {
+            font-size: 1em;
+            color: #6c757d;
+            display: block;
+            margin-top: 8px;
+        }
+        .spot-card .spot-info {
+            font-size: 0.95em;
+            margin-bottom: 5px;
+        }
+        .spot-card .spot-info strong {
+            color: #343a40;
+        }
+    </style>
+    <div class="row">
+        {% set grouped_spots = spots_with_lots|groupby('spot.lot_id') %}
+        {% for lot_id, lot_spots in grouped_spots %}
+            {% for item in lot_spots|sort(attribute='spot.id') %}
+                {% set position = loop.index %}
+                {% set letter = (position + 64)|chr %}
+                <div class="col-12 col-sm-6 col-md-4 col-lg-3 mb-4">
+                    <div class="spot-card">
+                        <div>
+                            <div class="spot-info">
+                                <strong>ID:</strong> {{ letter }}-{{ item.spot.lot_id }}
+                            </div>
+                            <div class="spot-info">
+                                <strong>Lot Name:</strong> {{ item.lot.prime_location_name if item.lot else 'Unknown Lot' }}
+                            </div>
+                        </div>
+                        <div class="availability-container">
+                            {% if item.spot.status == 'O' %}
+                                <span data-bs-toggle="tooltip" data-bs-placement="top" title="Occupied by {{ item.reservation.vehicle_number if item.reservation else 'Unknown' }}">
+                                    <span class="status-occupied">Occupied</span>
+                                    {% if item.reservation %}
+                                        <span class="vehicle-number">{{ item.reservation.vehicle_number }}</span>
+                                    {% endif %}
+                                </span>
+                            {% else %}
+                                <span data-bs-toggle="tooltip" data-bs-placement="top" title="Available for reservation">
+                                    <span class="status-available">Available</span>
+                                </span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
             {% endfor %}
-        </tbody>
-    </table>
+        {% endfor %}
+    </div>
+    <script>
+        // Enable Bootstrap tooltips
+        document.addEventListener('DOMContentLoaded', function() {
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.forEach(function(tooltipTriggerEl) {
+                new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+        });
+    </script>
 {% elif request.args.get('tab') == 'history' %}
     <h3>Recent Parking History</h3>
     <table class="table">
@@ -142,72 +213,84 @@
         </tbody>
     </table>
 {% elif request.args.get('tab') == 'summary' %}
-    <h3>Summary on Parking Spots</h3>
-    {% if total_reservations == 0 %}
+    <h3>Summary Charts</h3>
+    {% if total_lots == 0 and total_spots == 0 %}
         <div class="alert alert-info" role="alert">
-            You have no parking reservations to display in the summary charts.
+            No parking lots or spots available to display summary charts. Please contact an admin to add a parking lot.
         </div>
     {% else %}
-        <div class="row">
-            <div class="col-md-6">
-                <canvas id="reservationsChart"></canvas>
-            </div>
-            <div class="col-md-6">
-                <canvas id="activeChart"></canvas>
+        <style>
+            .chart-container {
+                max-width: 1200px; /* Increased chart width for better visibility */
+                max-height: 1000px; /* Adjusted chart height for better proportions */
+                margin: 0 auto; /* Center the chart */
+            }
+        </style>
+        <div class="row mb-6">
+            <div class="col-md-6 offset-md-3">
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="spotsChart"></canvas>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
         <script>
             if (typeof Chart === 'undefined') {
-                document.getElementById('reservationsChart').style.display = 'none';
-                document.getElementById('activeChart').style.display = 'none';
+                document.getElementById('spotsChart').style.display = 'none';
                 const errorDiv = document.createElement('div');
                 errorDiv.className = 'alert alert-danger';
                 errorDiv.role = 'alert';
                 errorDiv.innerText = 'Failed to load Chart.js. Please check your internet connection or try again later.';
                 document.querySelector('.row').after(errorDiv);
             } else {
-                // Reservations Chart (Pie)
-                const resCtx = document.getElementById('reservationsChart').getContext('2d');
-                new Chart(resCtx, {
-                    type: 'pie',
-                    data: {
-                        labels: ['Total Reservations'],
-                        datasets: [{
-                            data: [{{ total_reservations }}],
-                            backgroundColor: ['#36A2EB']
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        plugins: {
-                            legend: {
-                                position: 'top'
-                            },
-                            title: {
-                                display: true,
-                                text: 'Total Reservations'
-                            }
-                        }
-                    }
-                });
-
-                // Active Reservations Chart (Bar)
-                const activeCtx = document.getElementById('activeChart').getContext('2d');
-                new Chart(activeCtx, {
+                const spotsCtx = document.getElementById('spotsChart').getContext('2d');
+                new Chart(spotsCtx, {
                     type: 'bar',
                     data: {
-                        labels: ['Active Reservations'],
+                        labels: ['Occupied', 'Available'],
                         datasets: [{
-                            label: 'Reservations',
-                            data: [{{ active_reservations }}],
-                            backgroundColor: ['#FF6384']
+                            label: 'Spots',
+                            data: [{{ occupied_spots }}, {{ available_spots }}],
+                            backgroundColor: ['#FF6384', '#36A2EB'],
+                            borderColor: ['#ffffff'],
+                            borderWidth: 1
                         }]
                     },
                     options: {
                         responsive: true,
+                        maintainAspectRatio: false, /* Allow the chart to fit the container's dimensions */
                         scales: {
                             y: {
-                                beginAtZero: true
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Number of Spots',
+                                    font: {
+                                        size: 16 /* Increase font size for y-axis title */
+                                    }
+                                },
+                                ticks: {
+                                    font: {
+                                        size: 14 /* Increase font size for y-axis labels */
+                                    }
+                                }
+                            },
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Status',
+                                    font: {
+                                        size: 16 /* Increase font size for x-axis title */
+                                    }
+                                },
+                                ticks: {
+                                    font: {
+                                        size: 14 /* Increase font size for x-axis labels */
+                                    }
+                                }
                             }
                         },
                         plugins: {
@@ -216,7 +299,10 @@
                             },
                             title: {
                                 display: true,
-                                text: 'Active Reservations'
+                                text: 'Parking Spots Status',
+                                font: {
+                                    size: 18 /* Increase font size for chart title */
+                                }
                             }
                         }
                     }
