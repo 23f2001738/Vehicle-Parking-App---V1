@@ -97,7 +97,7 @@ def admin_dashboard():
         return redirect(url_for('login'))
     lots = ParkingLot.query.all()
     spots = ParkingSpot.query.all()
-    # Get all reservations to calculate total revenue and count active ones
+
     all_reservations = Reservation.query.all()
     active_reservations = Reservation.query.filter_by(leaving_timestamp=None).all()
     reservation_dict = {res.spot_id: res for res in all_reservations}
@@ -120,7 +120,6 @@ def admin_dashboard():
     available_spots = total_spots - occupied_spots
     total_reservations = len(active_reservations)
 
-    # Calculate total revenue per lot
     lot_revenue = {}
     for lot in lots:
         lot_spots = ParkingSpot.query.filter_by(lot_id=lot.id).all()
